@@ -12,13 +12,15 @@ RESET_POS = "r".encode("ascii")
 HEADER = bytearray([61, 62, 63, 64])
 DELTA_TOLERANCE = 10
 
+
 def millis():
     return nanoseconds() // 1000000
 
-def detect(image, detector):
+
+def detect(image, detector, kwargs):
     grayscale_frame = cv2.equalizeHist(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
 
-    results = detector.detectMultiScale(grayscale_frame)
+    results = detector.detectMultiScale(grayscale_frame, **kwargs)
 
     detected_objects = results
     
@@ -29,13 +31,16 @@ def detect(image, detector):
     else:
         raise RuntimeError("Can only handle detectors that are HOGs or Haar Cascades")
 
-    return nms(np.array([(x_coord, y_coord, x_coord+width, y_coord+height) for (x_coord, y_coord, width, height) in detected_objects]), overlapThresh=0.7)
+    return [(x_coord, y_coord, x_coord+width, y_coord+height) for (x_coord, y_coord, width, height) in detected_objects]
+
 
 def render_frame(frame, bounding_boxes):
-    for (xA, yA, xB, yB) in bounding_boxes:
+    reduced_boxes = nms(np.array(bounding_boxes))
+    for (xA, yA, xB, yB) in reduced_boxes:
         cv2.rectangle(frame, (xA, yA), (xB, yB), (0,0,255))
 
     cv2.imshow("Frame", frame)
+
 
 def main():
     #  init cascades
@@ -53,11 +58,17 @@ def main():
     HOG_detector.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector(), )
 
     # init detectors
-    detectors = [front_face_cascade, profile_face_cascade, HOG_detector]
-    next_detector = 0
+    # detectors = [front_face_cascade, profile_face_cascade, HOG_detector]
+    # detectors = [profile_face_cascade]
+    detectors = {
+        front_face_cascade: {},
+        profile_face_cascade: {"scaleFactor": 1.1, },
+        # HOG_detector: {"winStride": (16,16), "scale": 1.05},
+    }
+    next_detector_num = 0
 
     # init tracker
-    multiTrackers = [cv2.legacy.MultiTracker_create() for i in detectors]
+    multiTrackers = [cv2.legacy.MultiTracker_create() for i in detectors.keys()]
 
     # init time
     cur_time = millis()
@@ -85,17 +96,18 @@ def main():
         # distribute each of the dectors over the entire period 
         # so we're not performing several large calculations simultaneously
         if cur_time >= (detection_time + DETECTION_PERIOD/len(detectors)):
-            detected_objects = detect(cur_frame, detectors[next_detector])
+            next_detector = list(detectors.keys())[next_detector_num]
+            detected_objects = detect(cur_frame, next_detector, detectors[next_detector])
             
             # get rid of old trackers so we don't have duplicates, recreate tracker
-            multiTrackers[next_detector] = cv2.legacy.MultiTracker_create()
+            multiTrackers[next_detector_num] = cv2.legacy.MultiTracker_create()
             
             # assign objects to tracker
             for object in detected_objects:
-                multiTrackers[next_detector].add(cv2.legacy.TrackerKCF_create(), cur_frame, object)
+                multiTrackers[next_detector_num].add(cv2.legacy.TrackerKCF_create(), cur_frame, object)
 
             detection_time = int(DETECTION_PERIOD/len(detectors) + cur_time)
-            next_detector = (next_detector + 1) % len(detectors)
+            next_detector_num = (next_detector_num + 1) % len(detectors)
 
         cur_time = millis()
 
