@@ -79,7 +79,7 @@ def main():
     detectors = [
         lambda image: front_face_cascade.detectMultiScale(image),
         lambda image: profile_face_cascade.detectMultiScale(image, scaleFactor=1.1),
-        lambda image: HOG_detector.detectMultiscale(image)[0],
+        lambda image: HOG_detector.detectMultiScale(image)[0],
         SSD_detector,
         # HOG_detector: {"winStride": (16,16), "scale": 1.05},
     ]
