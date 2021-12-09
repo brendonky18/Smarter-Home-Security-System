@@ -1,5 +1,6 @@
 import cv2, serial
 import numpy as np
+import struct
 
 from imutils.object_detection import non_max_suppression as nms
 from time import time_ns as nanoseconds
@@ -7,7 +8,9 @@ from time import time_ns as nanoseconds
 FRONT_FACE_CASCADE = "haar_cascades/haarcascade_frontalface_default.xml"
 PROFILE_FACE_CASCADE = "haar_cascades/haarcascade_profileface.xml"
 DETECTION_PERIOD = 500
-RESET_POS = "RST"
+RESET_POS = "r".encode("ascii")
+HEADER = bytearray([61, 62, 63, 64])
+DELTA_TOLERANCE = 10
 
 def millis():
     return nanoseconds() // 1000000
@@ -110,14 +113,24 @@ def main():
         data = ""
         if num_objs > 0:
             avgX_coord = sumX_coord / len(tracked_objects)
-            print(f"Center of objects: {avgX_coord}")
+            # print(f"Center of objects: {avgX_coord}")
             delta = center - avgX_coord
-            data = str(delta)
+            
+            if delta < DELTA_TOLERANCE:
+                data = "L".encode('ascii') # left rotation
+            elif delta > DELTA_TOLERANCE:
+                data = "R".encode('ascii') # right rotation
+            else:
+                data = "N".encode('ascii') # no change
+
+
         else:
-            print("No objects detected")
-            data = RESET_POS
+            # print("No objects detected")
+            data = RESET_POS # reset rotation
 
         # serial communication
+        print(f'sending {data}')
+        arduino_serial.write(HEADER)
         arduino_serial.write(data)
 
     # clean up
