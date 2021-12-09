@@ -8,7 +8,8 @@ Adafruit_SSD1306 display(128, 64);
 #define POT A0
 #define BUTTON 0
 #define BUF_SIZE 1
-// #define DELTA_TOLERANCE 10
+#define ROTATION_DELAY 50
+#define DELTA_TOLERANCE 10
 
 // const byte RESET[4] = {' ', 'R', 'S', 'T'};
 
@@ -130,9 +131,11 @@ void setup() {
 int i = 0;
 bool defaultPosSet = false;
 int target_angle = 0;
+int prev_rotate_time = 0;
 void loop() {
     // setRotation(pot_input());
-    int rotation;
+    int cur_rotate_time = millis();
+    int rotation = -1;
     if(!defaultPosSet) {
         rotation = pot_input();
         if(checkButtonPushed(BUTTON)) {
@@ -144,12 +147,22 @@ void loop() {
             display.display();
         }
     } else {
-        rotation = calculateRotation(getSerialInput());
+        target_angle = calculateRotation(getSerialInput());
 // print("M");
 print("updating rotation: ");
     }
 // print(".");
 
 print(rotation);
-    setRotation(rotation);
+    if(rotation != -1) {
+        setRotation(rotation);
+    } else if(cur_rotate_time > (prev_rotate_time + ROTATION_DELAY)) {
+        int curAngle = servo.read();
+        if(target_angle > curAngle) {
+            setRotation(curAngle + 1);
+        } else if (target_angle < curAngle) {
+            setRotation(curAngle - 1);
+        }
+        prev_rotate_time = cur_rotate_time;
+    }
 }
