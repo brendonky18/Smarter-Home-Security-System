@@ -7,29 +7,25 @@ from time import time_ns as nanoseconds
 
 FRONT_FACE_CASCADE = "haar_cascades/haarcascade_frontalface_default.xml"
 PROFILE_FACE_CASCADE = "haar_cascades/haarcascade_profileface.xml"
+
+PROTOTXT = "SSD/MobileNetSSD_deploy.prototxt"
+MODEL = "SSD/MobileNetSSD_deploy.caffemodel"
+
 DETECTION_PERIOD = 500
 RESET_POS = "r".encode("ascii")
 HEADER = bytearray([61, 62, 63, 64])
 DELTA_TOLERANCE = 10
+SSD_CLASSES = ["person"]
 
 
 def millis():
     return nanoseconds() // 1000000
 
 
-def detect(image, detector, kwargs):
+def detect(image, detector):
     grayscale_frame = cv2.equalizeHist(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
 
-    results = detector.detectMultiScale(grayscale_frame, **kwargs)
-
-    detected_objects = results
-    
-    if isinstance(detector, cv2.HOGDescriptor):      # HOG
-        detected_objects = results[0]
-    elif isinstance(detector, cv2.CascadeClassifier):                                           # Cascade
-        detected_objects = results
-    else:
-        raise RuntimeError("Can only handle detectors that are HOGs or Haar Cascades")
+    detected_objects = detector(grayscale_frame)
 
     return [(x_coord, y_coord, x_coord+width, y_coord+height) for (x_coord, y_coord, width, height) in detected_objects]
 
@@ -57,18 +53,40 @@ def main():
     HOG_detector = cv2.HOGDescriptor()
     HOG_detector.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector(), )
 
+    # init SSD
+    net = cv2.dnn.readNetFromCaffe(PROTOTXT, MODEL)
+
     # init detectors
     # detectors = [front_face_cascade, profile_face_cascade, HOG_detector]
     # detectors = [profile_face_cascade]
-    detectors = {
-        front_face_cascade: {},
-        profile_face_cascade: {"scaleFactor": 1.1, },
+
+    def SSD_detector(image):
+        boxes = []
+
+        height, width = image.shape[:2]
+        blob = cv2.dnn.blobFromImage(image, 0.007843, (300, 300), 127.5)
+        net.setInput(blob)
+        detections = net.forward()
+        for i in np.arange(0, detections.shape[2]):
+            confidence = detections[0, 0, i, 2]
+            if confidence > 0.5:
+                idx = int(detections[0, 0, i, 1])
+                box = detections[0, 0, i, 3:7] * np.array([width, height, width, height])
+                boxes.append(box.astype("int"))
+
+        return boxes
+
+    detectors = [
+        lambda image: front_face_cascade.detectMultiScale(image),
+        lambda image: profile_face_cascade.detectMultiScale(image, scaleFactor=1.1),
+        lambda image: HOG_detector.detectMultiscale(image)[0],
+        SSD_detector,
         # HOG_detector: {"winStride": (16,16), "scale": 1.05},
-    }
+    ]
     next_detector_num = 0
 
     # init tracker
-    multiTrackers = [cv2.legacy.MultiTracker_create() for i in detectors.keys()]
+    multiTrackers = [cv2.legacy.MultiTracker_create() for i in range(len(detectors))]
 
     # init time
     cur_time = millis()
@@ -96,8 +114,8 @@ def main():
         # distribute each of the dectors over the entire period 
         # so we're not performing several large calculations simultaneously
         if cur_time >= (detection_time + DETECTION_PERIOD/len(detectors)):
-            next_detector = list(detectors.keys())[next_detector_num]
-            detected_objects = detect(cur_frame, next_detector, detectors[next_detector])
+            # next_detector = list(detectors.keys())[next_detector_num]
+            detected_objects = detect(cur_frame, detectors[next_detector_num])
             
             # get rid of old trackers so we don't have duplicates, recreate tracker
             multiTrackers[next_detector_num] = cv2.legacy.MultiTracker_create()
