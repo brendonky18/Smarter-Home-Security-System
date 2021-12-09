@@ -19,30 +19,16 @@ def detect(image, detector):
     detected_objects = results
     
     if isinstance(detector, cv2.HOGDescriptor):      # HOG
-        # print("H", flush=True)
-        # print(results, flush=True)
         detected_objects = results[0]
     elif isinstance(detector, cv2.CascadeClassifier):                                           # Cascade
         detected_objects = results
     else:
         raise RuntimeError("Can only handle detectors that are HOGs or Haar Cascades")
 
-    # print(detected_objects)
     return nms(np.array([(x_coord, y_coord, x_coord+width, y_coord+height) for (x_coord, y_coord, width, height) in detected_objects]), overlapThresh=0.7)
-    # return [(x_coord, y_coord, x_coord+width, y_coord+height) for (x_coord, y_coord, width, height) in detected_objects]
-
-    # for (x_coord, y_coord, width, height) in detected_objects:
-
-    # pass
 
 def render_frame(frame, bounding_boxes):
-    # print("H")
-    # print(bounding_boxes)
     for (xA, yA, xB, yB) in bounding_boxes:
-        # print("h")
-        # print((xA, yA))
-        # print((xB, yB))
-        # cv2.rectangle(frame, (0, 0), (10, 10), (0,0,255))
         cv2.rectangle(frame, (xA, yA), (xB, yB), (0,0,255))
 
     cv2.imshow("Frame", frame)
@@ -88,10 +74,7 @@ def main():
         
         # distribute each of the dectors over the entire period 
         # so we're not performing several large calculations simultaneously
-        # print(f"cur time: {cur_time}")
-        # print(f"dtc time: {detection_time}")
         if cur_time >= (detection_time + DETECTION_PERIOD/len(detectors)):
-            # print("Detecting")
             detected_objects = detect(cur_frame, detectors[next_detector])
             
             # get rid of old trackers so we don't have duplicates, recreate tracker
@@ -103,8 +86,6 @@ def main():
 
             detection_time = int(DETECTION_PERIOD/len(detectors) + cur_time)
             next_detector = (next_detector + 1) % len(detectors)
-        # else:
-            # print("Tracking")
 
         cur_time = millis()
 
@@ -113,30 +94,11 @@ def main():
         for (successes, cur_tracked_objects) in [multiTracker.update(cur_frame) for multiTracker in multiTrackers]:
             tracked_objects += [(int(x_coord), int(y_coord), int(x_coord+width), int(y_coord+height)) for (x_coord, y_coord, width, height) in cur_tracked_objects]
 
-        # front_faces = detect(cur_frame, front_face_cascade)
-        # profile_faces = detect(cur_frame, profile_face_cascade)
-
-        # people, weights = HOG_detector.detectMultiScale(cur_frame, winStride=(4, 4), scale=1.15)
-
-        # people = 
-
-        # drawn_frame = cur_frame
-
-        # print(type(profile_faces))
-        # print(type(people))
-
-        # for (xA, yA, xB, yB) in profile_faces:
-        #     drawn_frame = cv2.rectangle(drawn_frame, (xA, yA), (xB, yB), (0,0,255))
-
-        # for (xA, yA, xB, yB) in people:
-        #     drawn_frame = cv2.rectangle(drawn_frame, (xA, yA), (xB, yB), (0,255,0))
-
         render_frame(cur_frame, tracked_objects)
 
     # clean up
     camera_feed.release()
     cv2.destroyAllWindows()
-
 
 if __name__ == "__main__": 
     main()
